@@ -12,7 +12,7 @@ go get github.com/xoltia/mpv
 The package requires that the `mpv` executable is installed on the system.
 
 ## Usage
-Check the [documentation](https://pkg.go.dev/github.com/xoltia/mpv) for more information. For specific commands and properties not directly implemented, see the
+Check the [documentation](https://pkg.go.dev/github.com/xoltia/mpvipc) for more information. For specific commands and properties not directly implemented, see the
 [mpv IPC documentation](https://mpv.io/manual/master/#json-ipc) and
 make use of the command and property functions directly.
 
