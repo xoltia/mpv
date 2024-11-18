@@ -5,16 +5,22 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 )
 
+// Process represents an mpv process and provides a convenient way to manage
+// multiple clients that communicate with the same process.
 type Process struct {
 	Path string
 	Args []string
 
-	cmd    *exec.Cmd
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+
+	mu      sync.Mutex
+	cmd     *exec.Cmd
+	clients []*Client
 }
 
 func NewProcess() *Process {
@@ -35,15 +41,27 @@ func (p *Process) OpenClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	p.clients = append(p.clients, client)
 	return client, nil
 }
 
 func (p *Process) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.cmd == nil {
 		return nil
 	}
 
-	return p.cmd.Process.Kill()
+	for _, c := range p.clients {
+		c.Close()
+	}
+	p.clients = nil
+
+	err := p.cmd.Process.Kill()
+	p.cmd = nil
+	return err
 }
 
 func (p *Process) Wait() error {
@@ -68,6 +86,10 @@ func (p *Process) startProcess() error {
 	cmd.Stdin = p.Stdin
 	cmd.Stdout = p.Stdout
 	cmd.Stderr = p.Stderr
+	go func() {
+		cmd.Wait()
+		p.Close()
+	}()
 
 	if err := cmd.Start(); err != nil {
 		return err
