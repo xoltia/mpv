@@ -1,4 +1,4 @@
-module github.com/xoltia/mpvipc
+module github.com/xoltia/mpv
 
 go 1.23.2
 

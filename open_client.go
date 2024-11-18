@@ -33,7 +33,7 @@ func WithDialTimeout(timeout time.Duration) OpenClientOption {
 	}
 }
 
-func OpenClient(options ...OpenClientOption) (*mpvClient, error) {
+func OpenClient(options ...OpenClientOption) (*MPVClient, error) {
 	var opts openClientOptions
 	for _, o := range options {
 		o(&opts)
@@ -45,7 +45,7 @@ func OpenClient(options ...OpenClientOption) (*mpvClient, error) {
 		return nil, fmt.Errorf("failed to open IPC: %w", err)
 	}
 
-	client := &mpvClient{ipc: ipc}
+	client := &MPVClient{ipc: ipc}
 	go client.acceptEvents()
 	return client, nil
 }

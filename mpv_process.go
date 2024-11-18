@@ -23,7 +23,7 @@ func NewMPVProcess() *MPVProcess {
 	}
 }
 
-func (p *MPVProcess) OpenClient() (*mpvClient, error) {
+func (p *MPVProcess) OpenClient() (*MPVClient, error) {
 	if err := p.startProcess(); err != nil {
 		return nil, err
 	}

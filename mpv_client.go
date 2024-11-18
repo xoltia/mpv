@@ -32,28 +32,28 @@ type eventHandler struct {
 	fn   func(map[string]any)
 }
 
-type mpvClient struct {
+type MPVClient struct {
 	ipc             *ipc
 	eventHandlersMu sync.Mutex
 	eventHandlers   []*eventHandler
 	observerID      atomic.Int64
 }
 
-func (c *mpvClient) Close() error {
+func (c *MPVClient) Close() error {
 	return c.ipc.close()
 }
 
-func (c *mpvClient) Play() error {
+func (c *MPVClient) Play() error {
 	_, err := c.Command("set_property", "pause", false)
 	return err
 }
 
-func (c *mpvClient) Pause() error {
+func (c *MPVClient) Pause() error {
 	_, err := c.Command("set_property", "pause", true)
 	return err
 }
 
-func (c *mpvClient) Seek(position float64, flags ...SeekFlag) error {
+func (c *MPVClient) Seek(position float64, flags ...SeekFlag) error {
 	var err error
 	if len(flags) == 0 {
 		_, err = c.Command("seek", position)
@@ -71,81 +71,81 @@ func (c *mpvClient) Seek(position float64, flags ...SeekFlag) error {
 	return err
 }
 
-func (c *mpvClient) LoadFile(file string, mode LoadFileMode) error {
+func (c *MPVClient) LoadFile(file string, mode LoadFileMode) error {
 	_, err := c.Command("loadfile", file, string(mode))
 	return err
 }
 
 // Property setters
 
-func (c *mpvClient) SetProperty(property string, value any) error {
+func (c *MPVClient) SetProperty(property string, value any) error {
 	_, err := c.Command("set_property", property, value)
 	return err
 }
 
-func (c *mpvClient) SetVolume(volume float64) error {
+func (c *MPVClient) SetVolume(volume float64) error {
 	return c.SetProperty("volume", volume)
 }
 
-func (c *mpvClient) SetMute(mute bool) error {
+func (c *MPVClient) SetMute(mute bool) error {
 	return c.SetProperty("mute", mute)
 }
 
-func (c *mpvClient) SetLoop(loop bool) error {
+func (c *MPVClient) SetLoop(loop bool) error {
 	return c.SetProperty("loop", loop)
 }
 
-func (c *mpvClient) SetSpeed(speed float64) error {
+func (c *MPVClient) SetSpeed(speed float64) error {
 	return c.SetProperty("speed", speed)
 }
 
-func (c *mpvClient) SetPosition(position float64) error {
+func (c *MPVClient) SetPosition(position float64) error {
 	return c.SetProperty("time-pos", position)
 }
 
 // Property getters
 
-func (c *mpvClient) GetProperty(property string) (any, error) {
+func (c *MPVClient) GetProperty(property string) (any, error) {
 	return c.Command("get_property", property)
 }
 
-func (c *mpvClient) GetPaused() (bool, error) {
+func (c *MPVClient) GetPaused() (bool, error) {
 	return c.GetPropertyBool("pause")
 }
 
-func (c *mpvClient) GetDuration() (float64, error) {
+func (c *MPVClient) GetDuration() (float64, error) {
 	return c.GetPropertyFloat("duration")
 }
 
-func (c *mpvClient) GetPosition() (float64, error) {
+func (c *MPVClient) GetPosition() (float64, error) {
 	return c.GetPropertyFloat("time-pos")
 }
 
-func (c *mpvClient) GetVolume() (float64, error) {
+func (c *MPVClient) GetVolume() (float64, error) {
 	return c.GetPropertyFloat("volume")
 }
 
-func (c *mpvClient) GetMute() (bool, error) {
+func (c *MPVClient) GetMute() (bool, error) {
 	return c.GetPropertyBool("mute")
 }
 
-func (c *mpvClient) GetFilename() (string, error) {
+func (c *MPVClient) GetFilename() (string, error) {
 	return c.GetPropertyString("filename")
 }
 
-func (c *mpvClient) GetSpeed() (float64, error) {
+func (c *MPVClient) GetSpeed() (float64, error) {
 	return c.GetPropertyFloat("speed")
 }
 
-func (c *mpvClient) GetIdleActive() (bool, error) {
+func (c *MPVClient) GetIdleActive() (bool, error) {
 	return c.GetPropertyBool("idle-active")
 }
 
-func (c *mpvClient) GetLoop() (bool, error) {
+func (c *MPVClient) GetLoop() (bool, error) {
 	return c.GetPropertyBool("loop")
 }
 
-func (c *mpvClient) GetPropertyBool(property string) (b bool, err error) {
+func (c *MPVClient) GetPropertyBool(property string) (b bool, err error) {
 	value, err := c.GetProperty(property)
 	if err != nil {
 		return
@@ -158,7 +158,7 @@ func (c *mpvClient) GetPropertyBool(property string) (b bool, err error) {
 	return
 }
 
-func (c *mpvClient) GetPropertyFloat(property string) (f float64, err error) {
+func (c *MPVClient) GetPropertyFloat(property string) (f float64, err error) {
 	value, err := c.GetProperty(property)
 	if err != nil {
 		return
@@ -171,7 +171,7 @@ func (c *mpvClient) GetPropertyFloat(property string) (f float64, err error) {
 	return
 }
 
-func (c *mpvClient) GetPropertyString(property string) (s string, err error) {
+func (c *MPVClient) GetPropertyString(property string) (s string, err error) {
 	value, err := c.GetProperty(property)
 	if err != nil {
 		return
@@ -184,7 +184,7 @@ func (c *mpvClient) GetPropertyString(property string) (s string, err error) {
 	return
 }
 
-func (c *mpvClient) ObserveProperty(property string, fn func(any)) (rm func() error, err error) {
+func (c *MPVClient) ObserveProperty(property string, fn func(any)) (rm func() error, err error) {
 	observerID := c.observerID.Add(1)
 	rmEventHandler := c.AddEventHandler(func(event map[string]any) {
 		if event["event"] == "property-change" {
@@ -215,16 +215,16 @@ func (c *mpvClient) ObserveProperty(property string, fn func(any)) (rm func() er
 
 // Command sends a command to MPV. See https://mpv.io/manual/stable/#list-of-input-commands
 // for a list of commands and their arguments.
-func (c *mpvClient) Command(command string, args ...any) (any, error) {
+func (c *MPVClient) Command(command string, args ...any) (any, error) {
 	return c.command(false, command, args...)
 }
 
 // CommandAsync sends a command to MPV as an asynchronous command.
-func (c *mpvClient) CommandAsync(command string, args ...any) (any, error) {
+func (c *MPVClient) CommandAsync(command string, args ...any) (any, error) {
 	return c.command(true, command, args...)
 }
 
-func (c *mpvClient) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
+func (c *MPVClient) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
 	c.eventHandlersMu.Lock()
 	defer c.eventHandlersMu.Unlock()
 	handler := &eventHandler{sync: true, fn: fn}
@@ -232,7 +232,7 @@ func (c *mpvClient) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
 	return c.removeEventHandler(handler)
 }
 
-func (c *mpvClient) AddEventHandler(fn func(map[string]any)) (rm func()) {
+func (c *MPVClient) AddEventHandler(fn func(map[string]any)) (rm func()) {
 	c.eventHandlersMu.Lock()
 	defer c.eventHandlersMu.Unlock()
 	handler := &eventHandler{sync: false, fn: fn}
@@ -240,7 +240,7 @@ func (c *mpvClient) AddEventHandler(fn func(map[string]any)) (rm func()) {
 	return c.removeEventHandler(handler)
 }
 
-func (c *mpvClient) removeEventHandler(handler *eventHandler) func() {
+func (c *MPVClient) removeEventHandler(handler *eventHandler) func() {
 	return func() {
 		c.eventHandlersMu.Lock()
 		defer c.eventHandlersMu.Unlock()
@@ -253,7 +253,7 @@ func (c *mpvClient) removeEventHandler(handler *eventHandler) func() {
 	}
 }
 
-func (c *mpvClient) acceptEvents() {
+func (c *MPVClient) acceptEvents() {
 	for event := range c.ipc.events {
 		c.eventHandlersMu.Lock()
 		for _, handler := range c.eventHandlers {
@@ -267,7 +267,7 @@ func (c *mpvClient) acceptEvents() {
 	}
 }
 
-func (c *mpvClient) command(async bool, command string, args ...any) (data any, err error) {
+func (c *MPVClient) command(async bool, command string, args ...any) (data any, err error) {
 	args = append([]any{command}, args...)
 	resp, err := c.ipc.sendCommand(async, args...)
 	if err != nil {

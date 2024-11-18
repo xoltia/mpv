@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/signal"
 
-	mpv "github.com/xoltia/mpvipc"
+	"github.com/xoltia/mpv"
 )
 
 func main() {
