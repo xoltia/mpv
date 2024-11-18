@@ -24,6 +24,8 @@ func NewProcess() *Process {
 	}
 }
 
+// OpenClient starts a new mpv process and returns a new Client instance.
+// The client is only valid for as long as the process is running.
 func (p *Process) OpenClient() (*Client, error) {
 	if err := p.startProcess(); err != nil {
 		return nil, err

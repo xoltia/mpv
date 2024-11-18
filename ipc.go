@@ -3,10 +3,13 @@ package mpv
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
 )
+
+var ErrClosed = errors.New("ipc: closed")
 
 type mpvCommand struct {
 	Command   []any `json:"command"`
@@ -37,7 +40,7 @@ type ipc struct {
 	requestID       atomic.Int64
 	outgoing        chan request
 	events          chan map[string]any
-	pendingRequests map[int64]chan mpvResponse
+	pendingRequests map[int64]request
 }
 
 func newIPC(socket net.Conn) *ipc {
@@ -50,13 +53,18 @@ func (i *ipc) init() {
 	}
 	i.outgoing = make(chan request)
 	i.events = make(chan map[string]any)
-	i.pendingRequests = make(map[int64]chan mpvResponse)
+	i.pendingRequests = make(map[int64]request)
 	i.scanner = bufio.NewScanner(i.conn)
 	go i.writeLoop()
 	go i.readLoop()
 }
 
 func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error) {
+	if i.conn == nil {
+		err = ErrClosed
+		return
+	}
+
 	id := i.requestID.Add(1) - 1
 
 	req := request{
@@ -91,7 +99,17 @@ func (i *ipc) write(data []byte) error {
 }
 
 func (i *ipc) close() error {
-	return i.conn.Close()
+	close(i.outgoing)
+	close(i.events)
+	err := i.conn.Close()
+	i.conn = nil
+
+	i.mu.Lock()
+	for _, req := range i.pendingRequests {
+		req.err <- ErrClosed
+	}
+	i.mu.Unlock()
+	return err
 }
 
 func (i *ipc) writeJSON(v any) error {
@@ -107,7 +125,7 @@ func (i *ipc) writeJSON(v any) error {
 func (i *ipc) writeLoop() {
 	for req := range i.outgoing {
 		i.mu.Lock()
-		i.pendingRequests[req.command.RequestID] = req.resp
+		i.pendingRequests[req.command.RequestID] = req
 		i.mu.Unlock()
 
 		if err := i.writeJSON(req.command); err != nil {
@@ -135,8 +153,8 @@ func (i *ipc) readLoop() {
 		if event["error"] != nil {
 			i.mu.Lock()
 			reqID := int64(event["request_id"].(float64))
-			if resp, ok := i.pendingRequests[reqID]; ok {
-				resp <- mpvResponse{
+			if req, ok := i.pendingRequests[reqID]; ok {
+				req.resp <- mpvResponse{
 					Error:     event["error"].(string),
 					RequestID: reqID,
 					Data:      event["data"],
