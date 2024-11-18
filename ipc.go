@@ -227,6 +227,8 @@ func (i *ipc) readLoop() {
 			case i.events <- event:
 			case <-i.closeCh:
 				return
+			default:
+				// Drop event if no one is listening
 			}
 		case event["error"] != nil:
 			i.handleResponse(event)
