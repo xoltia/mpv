@@ -1,4 +1,4 @@
-# MPV IPC for Go
+# Go MPV IPC
 This is a Go package that provides an interface to the IPC mechanism
 of the [mpv media player](https://mpv.io/).
 
