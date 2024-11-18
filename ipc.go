@@ -41,6 +41,10 @@ type ipc struct {
 	outgoing        chan request
 	events          chan map[string]any
 	pendingRequests map[int64]request
+	closing         bool
+	closingWg       sync.WaitGroup
+	reqWg           sync.WaitGroup
+	closeCh         chan struct{}
 }
 
 func newIPC(socket net.Conn) *ipc {
@@ -55,12 +59,15 @@ func (i *ipc) init() {
 	i.events = make(chan map[string]any)
 	i.pendingRequests = make(map[int64]request)
 	i.scanner = bufio.NewScanner(i.conn)
+	i.closeCh = make(chan struct{})
+
+	i.closingWg.Add(2)
 	go i.writeLoop()
 	go i.readLoop()
 }
 
 func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error) {
-	if i.conn == nil {
+	if i.closing {
 		err = ErrClosed
 		return
 	}
@@ -77,6 +84,9 @@ func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error)
 		err:  make(chan error, 1),
 	}
 
+	// Just in case close was called between the closing check
+	// and the request being added to the outgoing channel.
+	i.reqWg.Add(1)
 	i.outgoing <- req
 	select {
 	case resp = <-req.resp:
@@ -88,7 +98,10 @@ func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error)
 
 func (i *ipc) read() ([]byte, error) {
 	if !i.scanner.Scan() {
-		return nil, i.scanner.Err()
+		if err := i.scanner.Err(); err != nil {
+			return nil, err
+		}
+		return nil, ErrClosed
 	}
 	return i.scanner.Bytes(), nil
 }
@@ -99,16 +112,40 @@ func (i *ipc) write(data []byte) error {
 }
 
 func (i *ipc) close() error {
-	close(i.outgoing)
-	close(i.events)
+	// Close the connection and signal the write loop to stop.
 	err := i.conn.Close()
-	i.conn = nil
+	if err != nil {
+		return err
+	}
+	// Signal the read loop to stop.
+	close(i.closeCh)
+	// Stop accepting new requests.
+	i.closing = true
+	// Wait for both the read and write loops to stop.
+	i.closingWg.Wait()
 
+	// Signal all pending requests that the IPC has been closed.
 	i.mu.Lock()
 	for _, req := range i.pendingRequests {
 		req.err <- ErrClosed
 	}
 	i.mu.Unlock()
+
+	// Handle any requests that were initiated after the IPC was closed.
+	go func() {
+		for req := range i.outgoing {
+			req.err <- ErrClosed
+			i.reqWg.Done()
+		}
+	}()
+
+	// Wait for requests to finish.
+	i.reqWg.Wait()
+
+	// Finally, close the channels.
+	close(i.events)
+	close(i.outgoing)
+
 	return err
 }
 
@@ -123,22 +160,32 @@ func (i *ipc) writeJSON(v any) error {
 }
 
 func (i *ipc) writeLoop() {
-	for req := range i.outgoing {
-		i.mu.Lock()
-		i.pendingRequests[req.command.RequestID] = req
-		i.mu.Unlock()
+	defer i.closingWg.Done()
 
-		if err := i.writeJSON(req.command); err != nil {
-			req.err <- err
+	for {
+		select {
+		case <-i.closeCh:
+			return
+		case req := <-i.outgoing:
+			i.reqWg.Done()
 			i.mu.Lock()
-			delete(i.pendingRequests, req.command.RequestID)
+			i.pendingRequests[req.command.RequestID] = req
 			i.mu.Unlock()
-			continue
+
+			if err := i.writeJSON(req.command); err != nil {
+				req.err <- err
+				i.mu.Lock()
+				delete(i.pendingRequests, req.command.RequestID)
+				i.mu.Unlock()
+				continue
+			}
 		}
 	}
 }
 
 func (i *ipc) readLoop() {
+	defer i.closingWg.Done()
+
 	for {
 		data, err := i.read()
 		if err != nil {
