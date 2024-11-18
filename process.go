@@ -1,6 +1,7 @@
 package mpv
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -43,6 +44,14 @@ func (p *Process) Close() error {
 	return p.cmd.Process.Kill()
 }
 
+func (p *Process) Wait() error {
+	if p.cmd == nil {
+		return errors.New("process is not started")
+	}
+
+	return p.cmd.Wait()
+}
+
 func (p *Process) startProcess() error {
 	if p.cmd != nil {
 		return nil
@@ -62,6 +71,6 @@ func (p *Process) startProcess() error {
 		return err
 	}
 
-	p.cmd = cmd
+	p.Cmd = cmd
 	return nil
 }
