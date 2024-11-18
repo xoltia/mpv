@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -34,17 +35,21 @@ type request struct {
 }
 
 type ipc struct {
-	conn              net.Conn
-	scanner           *bufio.Scanner
-	requestID         atomic.Int64
-	outgoing          chan request
-	events            chan map[string]any
+	conn    net.Conn
+	scanner *bufio.Scanner
+
+	requestID atomic.Int64
+	outgoing  chan request
+	events    chan map[string]any
+
 	pendingRequestsMu sync.Mutex
 	pendingRequests   map[int64]request
-	closing           bool
-	closingWg         sync.WaitGroup
-	reqWg             sync.WaitGroup
-	closeCh           chan struct{}
+
+	closing   bool
+	closingWg sync.WaitGroup
+	reqWg     sync.WaitGroup
+	closeCh   chan struct{}
+	closeMu   sync.Mutex
 }
 
 func newIPC(socket net.Conn) *ipc {
@@ -112,15 +117,35 @@ func (i *ipc) write(data []byte) error {
 }
 
 func (i *ipc) close() error {
-	// Close the connection and signal the write loop to stop.
+	// Prevent double closing.
+	// Fast path for when the connection is closed
+	// and resources are being cleaned up.
+	if i.closing {
+		return nil
+	}
+
+	// Slow path for a close in progress that may or
+	// may not succeed.
+	i.closeMu.Lock()
+	select {
+	case <-i.closeCh:
+		i.closeMu.Unlock()
+		return nil
+	default:
+	}
+	// Close the connection and signal the read loop to stop.
 	err := i.conn.Close()
 	if err != nil {
-		return err
+		i.closeMu.Unlock()
+		return fmt.Errorf("ipc: failed to close connection: %w", err)
 	}
-	// Signal the read loop to stop.
-	close(i.closeCh)
 	// Stop accepting new requests.
 	i.closing = true
+	// Signal the write loop to stop.
+	close(i.closeCh)
+	// Unlock the mutex, allows for subsequent calls to Close.
+	i.closeMu.Unlock()
+
 	// Wait for both the read and write loops to stop.
 	i.closingWg.Wait()
 
@@ -145,8 +170,7 @@ func (i *ipc) close() error {
 	// Finally, close the channels.
 	close(i.events)
 	close(i.outgoing)
-
-	return err
+	return nil
 }
 
 func (i *ipc) writeJSON(v any) error {
