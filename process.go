@@ -6,7 +6,7 @@ import (
 	"os/exec"
 )
 
-type MPVProcess struct {
+type Process struct {
 	Path string
 	Args []string
 
@@ -16,14 +16,14 @@ type MPVProcess struct {
 	Stderr io.Writer
 }
 
-func NewMPVProcess() *MPVProcess {
-	return &MPVProcess{
+func NewProcess() *Process {
+	return &Process{
 		Path: "mpv",
 		Args: []string{},
 	}
 }
 
-func (p *MPVProcess) OpenClient() (*MPVClient, error) {
+func (p *Process) OpenClient() (*Client, error) {
 	if err := p.startProcess(); err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (p *MPVProcess) OpenClient() (*MPVClient, error) {
 	return client, nil
 }
 
-func (p *MPVProcess) Close() error {
+func (p *Process) Close() error {
 	if p.cmd == nil {
 		return nil
 	}
@@ -43,7 +43,7 @@ func (p *MPVProcess) Close() error {
 	return p.cmd.Process.Kill()
 }
 
-func (p *MPVProcess) startProcess() error {
+func (p *Process) startProcess() error {
 	if p.cmd != nil {
 		return nil
 	}

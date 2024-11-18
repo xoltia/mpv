@@ -27,7 +27,7 @@ import (
 )
 
 func main() {
-    m := mpv.NewMPVProcess()
+    m := mpv.NewProcess()
     defer m.Close()
 	
     c, err := m.OpenClient()
