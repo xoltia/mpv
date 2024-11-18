@@ -71,6 +71,6 @@ func (p *Process) startProcess() error {
 		return err
 	}
 
-	p.Cmd = cmd
+	p.cmd = cmd
 	return nil
 }
