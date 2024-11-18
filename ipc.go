@@ -221,7 +221,13 @@ func (i *ipc) readLoop() {
 			continue
 		}
 
-		if event["error"] != nil {
+		if event["event"] != nil {
+			select {
+			case i.events <- event:
+			case <-i.closeCh:
+				return
+			}
+		} else if event["error"] != nil {
 			i.pendingRequestsMu.Lock()
 			reqID := int64(event["request_id"].(float64))
 			if req, ok := i.pendingRequests[reqID]; ok {
@@ -233,12 +239,6 @@ func (i *ipc) readLoop() {
 				delete(i.pendingRequests, reqID)
 			}
 			i.pendingRequestsMu.Unlock()
-			continue
-		}
-
-		if event["event"] != nil {
-			i.events <- event
-			continue
 		}
 	}
 }
