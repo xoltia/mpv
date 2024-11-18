@@ -11,7 +11,7 @@ func main() {
 	m := mpv.NewProcess()
 	defer m.Close()
 
-	m.Path = "./dist/vendor/mpv.exe"
+	m.Path = "./mpv.exe"
 	m.Args = []string{"--force-window"}
 	c, err := m.OpenClient()
 	if err != nil {
@@ -38,6 +38,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		m.Wait()
+		close(exitChan)
+	}()
 
 	signal.Notify(exitChan, os.Interrupt)
 	<-exitChan
