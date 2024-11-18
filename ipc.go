@@ -34,17 +34,17 @@ type request struct {
 }
 
 type ipc struct {
-	conn            net.Conn
-	scanner         *bufio.Scanner
-	mu              sync.Mutex
-	requestID       atomic.Int64
-	outgoing        chan request
-	events          chan map[string]any
-	pendingRequests map[int64]request
-	closing         bool
-	closingWg       sync.WaitGroup
-	reqWg           sync.WaitGroup
-	closeCh         chan struct{}
+	conn              net.Conn
+	scanner           *bufio.Scanner
+	requestID         atomic.Int64
+	outgoing          chan request
+	events            chan map[string]any
+	pendingRequestsMu sync.Mutex
+	pendingRequests   map[int64]request
+	closing           bool
+	closingWg         sync.WaitGroup
+	reqWg             sync.WaitGroup
+	closeCh           chan struct{}
 }
 
 func newIPC(socket net.Conn) *ipc {
@@ -125,11 +125,11 @@ func (i *ipc) close() error {
 	i.closingWg.Wait()
 
 	// Signal all pending requests that the IPC has been closed.
-	i.mu.Lock()
+	i.pendingRequestsMu.Lock()
 	for _, req := range i.pendingRequests {
 		req.err <- ErrClosed
 	}
-	i.mu.Unlock()
+	i.pendingRequestsMu.Unlock()
 
 	// Handle any requests that were initiated after the IPC was closed.
 	go func() {
@@ -168,15 +168,15 @@ func (i *ipc) writeLoop() {
 			return
 		case req := <-i.outgoing:
 			i.reqWg.Done()
-			i.mu.Lock()
+			i.pendingRequestsMu.Lock()
 			i.pendingRequests[req.command.RequestID] = req
-			i.mu.Unlock()
+			i.pendingRequestsMu.Unlock()
 
 			if err := i.writeJSON(req.command); err != nil {
 				req.err <- err
-				i.mu.Lock()
+				i.pendingRequestsMu.Lock()
 				delete(i.pendingRequests, req.command.RequestID)
-				i.mu.Unlock()
+				i.pendingRequestsMu.Unlock()
 				continue
 			}
 		}
@@ -198,7 +198,7 @@ func (i *ipc) readLoop() {
 		}
 
 		if event["error"] != nil {
-			i.mu.Lock()
+			i.pendingRequestsMu.Lock()
 			reqID := int64(event["request_id"].(float64))
 			if req, ok := i.pendingRequests[reqID]; ok {
 				req.resp <- mpvResponse{
@@ -208,7 +208,7 @@ func (i *ipc) readLoop() {
 				}
 				delete(i.pendingRequests, reqID)
 			}
-			i.mu.Unlock()
+			i.pendingRequestsMu.Unlock()
 			continue
 		}
 
