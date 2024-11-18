@@ -29,24 +29,24 @@ import (
 func main() {
 	m := mpv.NewMPVProcess()
 	defer m.Close()
-
+	
 	c, err := m.OpenClient()
 	if err != nil {
 		panic(err)
 	}
 	defer c.Close()
-
+	
 	err = c.LoadFile("https://youtu.be/YKEhO5jhP3g", mpv.LoadFileModeReplace)
 	if err != nil {
 		panic(err)
 	}
-
+	
 	err = c.Play()
 	if err != nil {
 		panic(err)
 	}
 
-    select {}
+    	select {}
 }
 ```
 > [!NOTE]
