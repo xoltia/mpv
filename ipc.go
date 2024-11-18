@@ -221,24 +221,30 @@ func (i *ipc) readLoop() {
 			continue
 		}
 
-		if event["event"] != nil {
+		switch {
+		case event["event"] != nil:
 			select {
 			case i.events <- event:
 			case <-i.closeCh:
 				return
 			}
-		} else if event["error"] != nil {
-			i.pendingRequestsMu.Lock()
-			reqID := int64(event["request_id"].(float64))
-			if req, ok := i.pendingRequests[reqID]; ok {
-				req.resp <- mpvResponse{
-					Error:     event["error"].(string),
-					RequestID: reqID,
-					Data:      event["data"],
-				}
-				delete(i.pendingRequests, reqID)
-			}
-			i.pendingRequestsMu.Unlock()
+		case event["error"] != nil:
+			i.handleResponse(event)
 		}
+	}
+}
+
+func (i *ipc) handleResponse(event map[string]any) {
+	i.pendingRequestsMu.Lock()
+	defer i.pendingRequestsMu.Unlock()
+
+	reqID := int64(event["request_id"].(float64))
+	if req, ok := i.pendingRequests[reqID]; ok {
+		req.resp <- mpvResponse{
+			Error:     event["error"].(string),
+			RequestID: reqID,
+			Data:      event["data"],
+		}
+		delete(i.pendingRequests, reqID)
 	}
 }
