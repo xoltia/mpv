@@ -8,11 +8,11 @@ import (
 )
 
 func main() {
-	m := mpv.NewProcess()
+	m := mpv.NewProcessWithOptions(mpv.ProcessOptions{
+		Args: []string{"--force-window"},
+	})
 	defer m.Close()
 
-	m.Path = "./mpv.exe"
-	m.Args = []string{"--force-window"}
 	c, err := m.OpenClient()
 	if err != nil {
 		panic(err)

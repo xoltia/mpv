@@ -5,42 +5,28 @@ import (
 	"time"
 )
 
-type openClientOptions struct {
-	socketPath  string
-	dialTimeout time.Duration
+type ClientOptions struct {
+	SocketPath  string
+	DialTimeout time.Duration
 }
 
-func (o *openClientOptions) applyDefaults() {
-	if o.socketPath == "" {
-		o.socketPath = defaultSocketPath
+func (o *ClientOptions) applyDefaults() {
+	if o.SocketPath == "" {
+		o.SocketPath = defaultSocketPath
 	}
-	if o.dialTimeout == 0 {
-		o.dialTimeout = 5 * time.Second
-	}
-}
-
-type OpenClientOption func(*openClientOptions)
-
-func WithSocketPath(socketPath string) OpenClientOption {
-	return func(o *openClientOptions) {
-		o.socketPath = socketPath
+	if o.DialTimeout == 0 {
+		o.DialTimeout = 5 * time.Second
 	}
 }
 
-func WithDialTimeout(timeout time.Duration) OpenClientOption {
-	return func(o *openClientOptions) {
-		o.dialTimeout = timeout
-	}
+func OpenClient() (*Client, error) {
+	return OpenClientWithOptions(ClientOptions{})
 }
 
-func OpenClient(options ...OpenClientOption) (*Client, error) {
-	var opts openClientOptions
-	for _, o := range options {
-		o(&opts)
-	}
+func OpenClientWithOptions(opts ClientOptions) (*Client, error) {
 	opts.applyDefaults()
 
-	ipc, err := openIPC(opts.socketPath, opts.dialTimeout)
+	ipc, err := openIPC(opts.SocketPath, opts.DialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open IPC: %w", err)
 	}
