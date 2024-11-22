@@ -9,7 +9,8 @@ go get github.com/xoltia/mpv
 ```
 
 ## Requirements
-The package requires that the `mpv` executable is installed on the system.
+The package requires that the `mpv` executable is installed on the system and in the PATH, or
+for the location of mpv to be provided using `ProcessOptions`.
 
 ## Usage
 Check the [documentation](https://pkg.go.dev/github.com/xoltia/mpv) for more information. For specific commands and properties not directly implemented, see the
@@ -36,7 +37,7 @@ func main() {
     }
     defer c.Close()
 	
-    err = c.LoadFile("https://youtu.be/YKEhO5jhP3g", mpv.LoadFileModeReplace)
+    err = c.LoadFile("https://youtu.be/6BfKzQzBe7M", mpv.LoadFileModeReplace)
     if err != nil {
         panic(err)
     }
