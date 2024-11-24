@@ -72,24 +72,6 @@ func (i *ipc) init() {
 	go i.readLoop()
 }
 
-func (i *ipc) sendCommandSync(ctx context.Context, async bool, args ...any) (resp Response, err error) {
-	req, err := i.startRequest(ctx, async, args...)
-	if err != nil {
-		return
-	}
-
-	select {
-	case resp = <-req.resp:
-	case err = <-req.err:
-	case <-ctx.Done():
-		err = ctx.Err()
-	case <-i.closeCh:
-		err = ErrClosed
-	}
-
-	return
-}
-
 func (i *ipc) startRequest(ctx context.Context, async bool, args ...any) (req request, err error) {
 	if i.closing {
 		err = ErrClosed
@@ -115,10 +97,8 @@ func (i *ipc) startRequest(ctx context.Context, async bool, args ...any) (req re
 	case i.outgoing <- req:
 	case <-ctx.Done():
 		err = ctx.Err()
-		return
 	case <-i.closeCh:
 		err = ErrClosed
-		return
 	}
 	return
 }

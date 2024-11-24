@@ -226,8 +226,26 @@ func (c *Client) ObserveProperty(ctx context.Context, property string, fn func(a
 
 // Command sends a command to MPV. See https://mpv.io/manual/stable/#list-of-input-commands
 // for a list of commands and their arguments.
-func (c *Client) Command(ctx context.Context, command string, args ...any) (any, error) {
-	return c.command(ctx, false, command, args...)
+func (c *Client) Command(ctx context.Context, command string, args ...any) (data any, err error) {
+	req, err := c.ipc.startRequest(ctx, false, append([]any{command}, args...)...)
+	if err != nil {
+		return
+	}
+
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+		return
+	case resp := <-req.resp:
+		if !resp.Success() {
+			err = fmt.Errorf("mpv: command failed: %s", resp.Error)
+		} else {
+			data = resp.Data
+		}
+		return
+	case err = <-req.err:
+		return
+	}
 }
 
 // CommandAsync sends a command to MPV as an asynchronous command.
@@ -292,16 +310,4 @@ func (c *Client) acceptEvents() {
 		}
 		c.eventHandlersMu.Unlock()
 	}
-}
-
-func (c *Client) command(ctx context.Context, async bool, command string, args ...any) (data any, err error) {
-	args = append([]any{command}, args...)
-	resp, err := c.ipc.sendCommandSync(ctx, async, args...)
-	if err != nil {
-		return nil, err
-	}
-	if !resp.Success() {
-		return nil, fmt.Errorf("mpv: command failed: %s", resp.Error)
-	}
-	return resp.Data, nil
 }
