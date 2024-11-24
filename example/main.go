@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 
@@ -19,18 +20,19 @@ func main() {
 	}
 	defer c.Close()
 
-	err = c.LoadFile("https://www.youtube.com/watch?v=6BfKzQzBe7M", mpv.LoadFileModeReplace)
+	ctx := context.Background()
+	err = c.LoadFile(ctx, "https://www.youtube.com/watch?v=6BfKzQzBe7M", mpv.LoadFileModeReplace)
 	if err != nil {
 		panic(err)
 	}
 
-	err = c.Play()
+	err = c.Play(ctx)
 	if err != nil {
 		panic(err)
 	}
 
 	exitChan := make(chan os.Signal, 1)
-	_, err = c.ObserveProperty("idle-active", func(v any) {
+	_, err = c.ObserveProperty(ctx, "idle-active", func(v any) {
 		if v.(bool) {
 			close(exitChan)
 		}

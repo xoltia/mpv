@@ -1,6 +1,7 @@
 package mpv
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -43,18 +44,18 @@ func (c *Client) Close() error {
 	return c.ipc.close()
 }
 
-func (c *Client) Play() error {
-	return c.SetProperty("pause", false)
+func (c *Client) Play(ctx context.Context) error {
+	return c.SetProperty(ctx, "pause", false)
 }
 
-func (c *Client) Pause() error {
-	return c.SetProperty("pause", true)
+func (c *Client) Pause(ctx context.Context) error {
+	return c.SetProperty(ctx, "pause", true)
 }
 
-func (c *Client) Seek(position float64, flags ...SeekFlag) error {
+func (c *Client) Seek(ctx context.Context, position float64, flags ...SeekFlag) error {
 	var err error
 	if len(flags) == 0 {
-		_, err = c.Command("seek", position)
+		_, err = c.Command(ctx, "seek", position)
 	} else {
 		flag := strings.Builder{}
 		for i, f := range flags {
@@ -63,88 +64,88 @@ func (c *Client) Seek(position float64, flags ...SeekFlag) error {
 			}
 			flag.WriteString(string(f))
 		}
-		_, err = c.Command("seek", position, flag)
+		_, err = c.Command(ctx, "seek", position, flag)
 	}
 
 	return err
 }
 
-func (c *Client) LoadFile(file string, mode LoadFileMode) error {
-	_, err := c.Command("loadfile", file, string(mode))
+func (c *Client) LoadFile(ctx context.Context, file string, mode LoadFileMode) error {
+	_, err := c.Command(ctx, "loadfile", file, string(mode))
 	return err
 }
 
 // Property setters
 
-func (c *Client) SetProperty(property string, value any) error {
-	_, err := c.Command("set_property", property, value)
+func (c *Client) SetProperty(ctx context.Context, property string, value any) error {
+	_, err := c.Command(ctx, "set_property", property, value)
 	return err
 }
 
-func (c *Client) SetVolume(volume float64) error {
-	return c.SetProperty("volume", volume)
+func (c *Client) SetVolume(ctx context.Context, volume float64) error {
+	return c.SetProperty(ctx, "volume", volume)
 }
 
-func (c *Client) SetMute(mute bool) error {
-	return c.SetProperty("mute", mute)
+func (c *Client) SetMute(ctx context.Context, mute bool) error {
+	return c.SetProperty(ctx, "mute", mute)
 }
 
-func (c *Client) SetLoop(loop bool) error {
-	return c.SetProperty("loop", loop)
+func (c *Client) SetLoop(ctx context.Context, loop bool) error {
+	return c.SetProperty(ctx, "loop", loop)
 }
 
-func (c *Client) SetSpeed(speed float64) error {
-	return c.SetProperty("speed", speed)
+func (c *Client) SetSpeed(ctx context.Context, speed float64) error {
+	return c.SetProperty(ctx, "speed", speed)
 }
 
-func (c *Client) SetPosition(position float64) error {
-	return c.SetProperty("time-pos", position)
+func (c *Client) SetPosition(ctx context.Context, position float64) error {
+	return c.SetProperty(ctx, "time-pos", position)
 }
 
 // Property getters
 
-func (c *Client) GetProperty(property string) (any, error) {
-	return c.Command("get_property", property)
+func (c *Client) GetProperty(ctx context.Context, property string) (any, error) {
+	return c.Command(ctx, "get_property", property)
 }
 
-func (c *Client) GetPaused() (bool, error) {
-	return c.GetPropertyBool("pause")
+func (c *Client) GetPaused(ctx context.Context) (bool, error) {
+	return c.GetPropertyBool(ctx, "pause")
 }
 
-func (c *Client) GetDuration() (float64, error) {
-	return c.GetPropertyFloat("duration")
+func (c *Client) GetDuration(ctx context.Context) (float64, error) {
+	return c.GetPropertyFloat(ctx, "duration")
 }
 
-func (c *Client) GetPosition() (float64, error) {
-	return c.GetPropertyFloat("time-pos")
+func (c *Client) GetPosition(ctx context.Context) (float64, error) {
+	return c.GetPropertyFloat(ctx, "time-pos")
 }
 
-func (c *Client) GetVolume() (float64, error) {
-	return c.GetPropertyFloat("volume")
+func (c *Client) GetVolume(ctx context.Context) (float64, error) {
+	return c.GetPropertyFloat(ctx, "volume")
 }
 
-func (c *Client) GetMute() (bool, error) {
-	return c.GetPropertyBool("mute")
+func (c *Client) GetMute(ctx context.Context) (bool, error) {
+	return c.GetPropertyBool(ctx, "mute")
 }
 
-func (c *Client) GetFilename() (string, error) {
-	return c.GetPropertyString("filename")
+func (c *Client) GetFilename(ctx context.Context) (string, error) {
+	return c.GetPropertyString(ctx, "filename")
 }
 
-func (c *Client) GetSpeed() (float64, error) {
-	return c.GetPropertyFloat("speed")
+func (c *Client) GetSpeed(ctx context.Context) (float64, error) {
+	return c.GetPropertyFloat(ctx, "speed")
 }
 
-func (c *Client) GetIdleActive() (bool, error) {
-	return c.GetPropertyBool("idle-active")
+func (c *Client) GetIdleActive(ctx context.Context) (bool, error) {
+	return c.GetPropertyBool(ctx, "idle-active")
 }
 
-func (c *Client) GetLoop() (bool, error) {
-	return c.GetPropertyBool("loop")
+func (c *Client) GetLoop(ctx context.Context) (bool, error) {
+	return c.GetPropertyBool(ctx, "loop")
 }
 
-func (c *Client) GetPropertyBool(property string) (b bool, err error) {
-	value, err := c.GetProperty(property)
+func (c *Client) GetPropertyBool(ctx context.Context, property string) (b bool, err error) {
+	value, err := c.GetProperty(ctx, property)
 	if err != nil {
 		return
 	}
@@ -156,8 +157,8 @@ func (c *Client) GetPropertyBool(property string) (b bool, err error) {
 	return
 }
 
-func (c *Client) GetPropertyFloat(property string) (f float64, err error) {
-	value, err := c.GetProperty(property)
+func (c *Client) GetPropertyFloat(ctx context.Context, property string) (f float64, err error) {
+	value, err := c.GetProperty(ctx, property)
 	if err != nil {
 		return
 	}
@@ -169,8 +170,8 @@ func (c *Client) GetPropertyFloat(property string) (f float64, err error) {
 	return
 }
 
-func (c *Client) GetPropertyString(property string) (s string, err error) {
-	value, err := c.GetProperty(property)
+func (c *Client) GetPropertyString(ctx context.Context, property string) (s string, err error) {
+	value, err := c.GetProperty(ctx, property)
 	if err != nil {
 		return
 	}
@@ -182,7 +183,7 @@ func (c *Client) GetPropertyString(property string) (s string, err error) {
 	return
 }
 
-func (c *Client) ObserveProperty(property string, fn func(any)) (rm func() error, err error) {
+func (c *Client) ObserveProperty(ctx context.Context, property string, fn func(any)) (rm func() error, err error) {
 	observerID := c.observerID.Add(1)
 	rmEventHandler := c.AddEventHandler(func(event map[string]any) {
 		if event["event"] == "property-change" {
@@ -197,14 +198,14 @@ func (c *Client) ObserveProperty(property string, fn func(any)) (rm func() error
 		}
 	})
 
-	if _, err = c.CommandAsync("observe_property", observerID, property); err != nil {
+	if _, err = c.CommandAsync(ctx, "observe_property", observerID, property); err != nil {
 		rmEventHandler()
 		return nil, fmt.Errorf("failed to observe property: %w", err)
 	}
 
 	return func() error {
 		rmEventHandler()
-		if _, err := c.CommandAsync("unobserve_property", observerID); err != nil {
+		if _, err := c.CommandAsync(ctx, "unobserve_property", observerID); err != nil {
 			return fmt.Errorf("failed to unobserve property: %w", err)
 		}
 		return nil
@@ -213,13 +214,13 @@ func (c *Client) ObserveProperty(property string, fn func(any)) (rm func() error
 
 // Command sends a command to MPV. See https://mpv.io/manual/stable/#list-of-input-commands
 // for a list of commands and their arguments.
-func (c *Client) Command(command string, args ...any) (any, error) {
-	return c.command(false, command, args...)
+func (c *Client) Command(ctx context.Context, command string, args ...any) (any, error) {
+	return c.command(ctx, false, command, args...)
 }
 
 // CommandAsync sends a command to MPV as an asynchronous command.
-func (c *Client) CommandAsync(command string, args ...any) (any, error) {
-	return c.command(true, command, args...)
+func (c *Client) CommandAsync(ctx context.Context, command string, args ...any) (any, error) {
+	return c.command(ctx, true, command, args...)
 }
 
 func (c *Client) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
@@ -265,9 +266,9 @@ func (c *Client) acceptEvents() {
 	}
 }
 
-func (c *Client) command(async bool, command string, args ...any) (data any, err error) {
+func (c *Client) command(ctx context.Context, async bool, command string, args ...any) (data any, err error) {
 	args = append([]any{command}, args...)
-	resp, err := c.ipc.sendCommand(async, args...)
+	resp, err := c.ipc.sendCommand(ctx, async, args...)
 	if err != nil {
 		return nil, err
 	}

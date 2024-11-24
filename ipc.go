@@ -2,6 +2,7 @@ package mpv
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +33,7 @@ type request struct {
 	command mpvCommand
 	resp    chan mpvResponse
 	err     chan error
+	ctx     context.Context
 }
 
 type ipc struct {
@@ -47,7 +49,6 @@ type ipc struct {
 
 	closing   bool
 	closingWg sync.WaitGroup
-	reqWg     sync.WaitGroup
 	closeCh   chan struct{}
 	closeMu   sync.Mutex
 }
@@ -71,13 +72,16 @@ func (i *ipc) init() {
 	go i.readLoop()
 }
 
-func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error) {
+func (i *ipc) sendCommand(ctx context.Context, async bool, args ...any) (resp mpvResponse, err error) {
 	if i.closing {
 		err = ErrClosed
 		return
 	}
 
 	id := i.requestID.Add(1) - 1
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	req := request{
 		command: mpvCommand{
@@ -87,15 +91,26 @@ func (i *ipc) sendCommand(async bool, args ...any) (resp mpvResponse, err error)
 		},
 		resp: make(chan mpvResponse, 1),
 		err:  make(chan error, 1),
+		ctx:  ctx,
 	}
 
-	// Just in case close was called between the closing check
-	// and the request being added to the outgoing channel.
-	i.reqWg.Add(1)
-	i.outgoing <- req
+	select {
+	case i.outgoing <- req:
+	case <-ctx.Done():
+		err = ctx.Err()
+		return
+	case <-i.closeCh:
+		err = ErrClosed
+		return
+	}
+
 	select {
 	case resp = <-req.resp:
 	case err = <-req.err:
+	case <-ctx.Done():
+		err = ctx.Err()
+	case <-i.closeCh:
+		err = ErrClosed
 	}
 
 	return
@@ -156,17 +171,6 @@ func (i *ipc) close() error {
 	}
 	i.pendingRequestsMu.Unlock()
 
-	// Handle any requests that were initiated after the IPC was closed.
-	go func() {
-		for req := range i.outgoing {
-			req.err <- ErrClosed
-			i.reqWg.Done()
-		}
-	}()
-
-	// Wait for requests to finish.
-	i.reqWg.Wait()
-
 	// Finally, close the channels.
 	close(i.events)
 	close(i.outgoing)
@@ -191,13 +195,16 @@ func (i *ipc) writeLoop() {
 		case <-i.closeCh:
 			return
 		case req := <-i.outgoing:
-			i.reqWg.Done()
+			//i.reqWg.Done()
 			i.pendingRequestsMu.Lock()
 			i.pendingRequests[req.command.RequestID] = req
 			i.pendingRequestsMu.Unlock()
 
 			if err := i.writeJSON(req.command); err != nil {
-				req.err <- err
+				select {
+				case req.err <- err:
+				case <-req.ctx.Done():
+				}
 				i.pendingRequestsMu.Lock()
 				delete(i.pendingRequests, req.command.RequestID)
 				i.pendingRequestsMu.Unlock()
@@ -242,11 +249,17 @@ func (i *ipc) handleResponse(event map[string]any) {
 
 	reqID := int64(event["request_id"].(float64))
 	if req, ok := i.pendingRequests[reqID]; ok {
-		req.resp <- mpvResponse{
+		response := mpvResponse{
 			Error:     event["error"].(string),
 			RequestID: reqID,
 			Data:      event["data"],
 		}
+
+		select {
+		case req.resp <- response:
+		case <-req.ctx.Done():
+		}
+
 		delete(i.pendingRequests, reqID)
 	}
 }
