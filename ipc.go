@@ -41,11 +41,11 @@ type ipc struct {
 	conn    net.Conn
 	scanner *bufio.Scanner
 
-	requestID atomic.Int64
-	outgoing  chan request
-	events    chan map[string]any
-
+	requestID       atomic.Int64
 	pendingRequests *sync.Map
+
+	outgoing chan request
+	events   chan map[string]any
 
 	closing   bool
 	closingWg sync.WaitGroup
