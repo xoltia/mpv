@@ -28,6 +28,17 @@ const (
 	SeekFlagAbsolutePercent SeekFlag = "absolute-percent"
 )
 
+// Request represents an asynchronous request to MPV. When waiting for a response,
+// you should always check the error channel for any errors that may have occurred.
+// A canceled request will not return an error, a request will only be canceled if
+// Cancel is called on the request or the parent context is canceled.
+type Request struct {
+	ID       int64
+	Response <-chan Response
+	Error    <-chan error
+	Cancel   context.CancelFunc
+}
+
 type eventHandler struct {
 	sync bool
 	fn   func(map[string]any)
@@ -183,6 +194,7 @@ func (c *Client) GetPropertyString(ctx context.Context, property string) (s stri
 	return
 }
 
+// ObserveProperty observes a property and calls the provided function when it changes.
 func (c *Client) ObserveProperty(ctx context.Context, property string, fn func(any)) (rm func() error, err error) {
 	observerID := c.observerID.Add(1)
 	rmEventHandler := c.AddEventHandler(func(event map[string]any) {
@@ -198,14 +210,14 @@ func (c *Client) ObserveProperty(ctx context.Context, property string, fn func(a
 		}
 	})
 
-	if _, err = c.CommandAsync(ctx, "observe_property", observerID, property); err != nil {
+	if _, err = c.Command(ctx, "observe_property", observerID, property); err != nil {
 		rmEventHandler()
 		return nil, fmt.Errorf("failed to observe property: %w", err)
 	}
 
 	return func() error {
 		rmEventHandler()
-		if _, err := c.CommandAsync(ctx, "unobserve_property", observerID); err != nil {
+		if _, err := c.Command(ctx, "unobserve_property", observerID); err != nil {
 			return fmt.Errorf("failed to unobserve property: %w", err)
 		}
 		return nil
@@ -219,10 +231,24 @@ func (c *Client) Command(ctx context.Context, command string, args ...any) (any,
 }
 
 // CommandAsync sends a command to MPV as an asynchronous command.
-func (c *Client) CommandAsync(ctx context.Context, command string, args ...any) (any, error) {
-	return c.command(ctx, true, command, args...)
+// Returns an AsyncRequest that can be used to wait for the response or
+// cancel the request.
+func (c *Client) CommandAsync(ctx context.Context, command string, args ...any) (preq Request, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	req, err := c.ipc.startRequest(ctx, true, append([]any{command}, args...)...)
+	if err != nil {
+		cancel()
+		return
+	}
+	preq.ID = req.command.RequestID
+	preq.Response = req.resp
+	preq.Error = req.err
+	preq.Cancel = cancel
+	return
 }
 
+// AddEventHandlerSync adds a synchronous event handler to the client.
+// This handler will block the event loop until it returns.
 func (c *Client) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
 	c.eventHandlersMu.Lock()
 	defer c.eventHandlersMu.Unlock()
@@ -231,6 +257,8 @@ func (c *Client) AddEventHandlerSync(fn func(map[string]any)) (rm func()) {
 	return c.removeEventHandler(handler)
 }
 
+// AddEventHandler adds an event handler to the client. This handler will be
+// called in a new goroutine when an event is received.
 func (c *Client) AddEventHandler(fn func(map[string]any)) (rm func()) {
 	c.eventHandlersMu.Lock()
 	defer c.eventHandlersMu.Unlock()
@@ -268,11 +296,11 @@ func (c *Client) acceptEvents() {
 
 func (c *Client) command(ctx context.Context, async bool, command string, args ...any) (data any, err error) {
 	args = append([]any{command}, args...)
-	resp, err := c.ipc.sendCommand(ctx, async, args...)
+	resp, err := c.ipc.sendCommandSync(ctx, async, args...)
 	if err != nil {
 		return nil, err
 	}
-	if !resp.isSuccess() {
+	if !resp.Success() {
 		return nil, fmt.Errorf("mpv: command failed: %s", resp.Error)
 	}
 	return resp.Data, nil

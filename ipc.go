@@ -19,21 +19,22 @@ type mpvCommand struct {
 	RequestID int64 `json:"request_id"`
 }
 
-type mpvResponse struct {
+type Response struct {
 	Data      interface{} `json:"data"`
 	Error     string      `json:"error"`
 	RequestID int64       `json:"request_id"`
 }
 
-func (r mpvResponse) isSuccess() bool {
+func (r Response) Success() bool {
 	return r.Error == "success"
 }
 
 type request struct {
 	command mpvCommand
-	resp    chan mpvResponse
+	resp    chan Response
 	err     chan error
 	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 type ipc struct {
@@ -72,35 +73,9 @@ func (i *ipc) init() {
 	go i.readLoop()
 }
 
-func (i *ipc) sendCommand(ctx context.Context, async bool, args ...any) (resp mpvResponse, err error) {
-	if i.closing {
-		err = ErrClosed
-		return
-	}
-
-	id := i.requestID.Add(1) - 1
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	req := request{
-		command: mpvCommand{
-			Command:   args,
-			Async:     async,
-			RequestID: id,
-		},
-		resp: make(chan mpvResponse, 1),
-		err:  make(chan error, 1),
-		ctx:  ctx,
-	}
-
-	select {
-	case i.outgoing <- req:
-	case <-ctx.Done():
-		err = ctx.Err()
-		return
-	case <-i.closeCh:
-		err = ErrClosed
+func (i *ipc) sendCommandSync(ctx context.Context, async bool, args ...any) (resp Response, err error) {
+	req, err := i.startRequest(ctx, async, args...)
+	if err != nil {
 		return
 	}
 
@@ -113,6 +88,39 @@ func (i *ipc) sendCommand(ctx context.Context, async bool, args ...any) (resp mp
 		err = ErrClosed
 	}
 
+	return
+}
+
+func (i *ipc) startRequest(ctx context.Context, async bool, args ...any) (req request, err error) {
+	if i.closing {
+		err = ErrClosed
+		return
+	}
+
+	id := i.requestID.Add(1) - 1
+	ctx, cancel := context.WithCancel(ctx)
+
+	req = request{
+		command: mpvCommand{
+			Command:   args,
+			Async:     async,
+			RequestID: id,
+		},
+		resp:   make(chan Response, 1),
+		err:    make(chan error, 1),
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	select {
+	case i.outgoing <- req:
+	case <-ctx.Done():
+		err = ctx.Err()
+		return
+	case <-i.closeCh:
+		err = ErrClosed
+		return
+	}
 	return
 }
 
@@ -249,7 +257,7 @@ func (i *ipc) handleResponse(event map[string]any) {
 
 	reqID := int64(event["request_id"].(float64))
 	if req, ok := i.pendingRequests[reqID]; ok {
-		response := mpvResponse{
+		response := Response{
 			Error:     event["error"].(string),
 			RequestID: reqID,
 			Data:      event["data"],
