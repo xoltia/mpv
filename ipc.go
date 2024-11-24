@@ -45,8 +45,7 @@ type ipc struct {
 	outgoing  chan request
 	events    chan map[string]any
 
-	pendingRequestsMu sync.Mutex
-	pendingRequests   map[int64]request
+	pendingRequests *sync.Map
 
 	closing   bool
 	closingWg sync.WaitGroup
@@ -64,7 +63,7 @@ func (i *ipc) init() {
 	}
 	i.outgoing = make(chan request)
 	i.events = make(chan map[string]any)
-	i.pendingRequests = make(map[int64]request)
+	i.pendingRequests = new(sync.Map)
 	i.scanner = bufio.NewScanner(i.conn)
 	i.closeCh = make(chan struct{})
 
@@ -173,11 +172,11 @@ func (i *ipc) close() error {
 	i.closingWg.Wait()
 
 	// Signal all pending requests that the IPC has been closed.
-	i.pendingRequestsMu.Lock()
-	for _, req := range i.pendingRequests {
+	i.pendingRequests.Range(func(_, v any) bool {
+		req := v.(request)
 		req.err <- ErrClosed
-	}
-	i.pendingRequestsMu.Unlock()
+		return true
+	})
 
 	// Finally, close the channels.
 	close(i.events)
@@ -203,19 +202,14 @@ func (i *ipc) writeLoop() {
 		case <-i.closeCh:
 			return
 		case req := <-i.outgoing:
-			//i.reqWg.Done()
-			i.pendingRequestsMu.Lock()
-			i.pendingRequests[req.command.RequestID] = req
-			i.pendingRequestsMu.Unlock()
+			i.pendingRequests.Store(req.command.RequestID, req)
 
 			if err := i.writeJSON(req.command); err != nil {
 				select {
 				case req.err <- err:
 				case <-req.ctx.Done():
 				}
-				i.pendingRequestsMu.Lock()
-				delete(i.pendingRequests, req.command.RequestID)
-				i.pendingRequestsMu.Unlock()
+				i.pendingRequests.Delete(req.command.RequestID)
 				continue
 			}
 		}
@@ -252,22 +246,21 @@ func (i *ipc) readLoop() {
 }
 
 func (i *ipc) handleResponse(event map[string]any) {
-	i.pendingRequestsMu.Lock()
-	defer i.pendingRequestsMu.Unlock()
-
 	reqID := int64(event["request_id"].(float64))
-	if req, ok := i.pendingRequests[reqID]; ok {
-		response := Response{
-			Error:     event["error"].(string),
-			RequestID: reqID,
-			Data:      event["data"],
-		}
+	value, ok := i.pendingRequests.LoadAndDelete(reqID)
+	if !ok {
+		return
+	}
 
-		select {
-		case req.resp <- response:
-		case <-req.ctx.Done():
-		}
+	req := value.(request)
+	response := Response{
+		Error:     event["error"].(string),
+		RequestID: reqID,
+		Data:      event["data"],
+	}
 
-		delete(i.pendingRequests, reqID)
+	select {
+	case req.resp <- response:
+	case <-req.ctx.Done():
 	}
 }
