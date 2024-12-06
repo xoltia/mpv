@@ -43,7 +43,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 // OpenClient starts a new mpv process if one has not already been started and
 // returns a new Client instance to communicate with it. The client is only
 // valid for as long as the process is running.
-func (p *Process) OpenClient() (*Client, error) {
+func (p *Process) OpenClient() (c *Client, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -51,21 +51,18 @@ func (p *Process) OpenClient() (*Client, error) {
 		return nil, err
 	}
 
-	attempts := 0
-tryConnect:
-	client, err := OpenClientWithOptions(p.opts.ClientOptions)
-	if err != nil {
-		if errors.Is(err, syscall.ECONNREFUSED) && attempts < p.opts.ConnMaxRetries {
-			attempts++
-			time.Sleep(p.opts.ConnRetryDelay * time.Duration(attempts<<1))
-			goto tryConnect
+	for attempts := 0; attempts < p.opts.ConnMaxRetries; attempts++ {
+		c, err = OpenClientWithOptions(p.opts.ClientOptions)
+
+		switch {
+		case err == nil:
+			p.clients = append(p.clients, c)
+			return
+		case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.ENOENT):
+			time.Sleep(p.opts.ConnRetryDelay * time.Duration(1<<attempts))
 		}
-		return nil, err
 	}
-
-	p.clients = append(p.clients, client)
-
-	return client, nil
+	return
 }
 
 func (p *Process) Close() error {
